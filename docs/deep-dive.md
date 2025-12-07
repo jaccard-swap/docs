@@ -428,7 +428,7 @@ struct PlayerStats {
    "attack_tier:3" || "defense_tier:2" || "class:warrior" || "faction:alliance"
    ```
 
-3. **Schema registry**: On-chain registry of type schemas (see [Protocol](/docs/protocol))
+3. **Schema registry**: On-chain registry of type schemas (see [Protocol](./protocol))
    ```solidity
    mapping(bytes32 => TypeSchema) public schemas;
    ```
@@ -528,6 +528,6 @@ For Jaccard Swap, we keep it simple with `bytes32[5]`. The fingerprinting optimi
 
 ## Next Steps
 
-- [Protocol](/docs/protocol) — cross-collection standardization
-- [Introduction](/docs/intro) — back to basics
+- [Protocol](./protocol) — cross-collection standardization
+- [Introduction](./intro) — back to basics
 

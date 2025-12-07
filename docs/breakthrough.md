@@ -285,6 +285,6 @@ Jaccard Swap achieves trustless matching with reasonable expressiveness at low c
 
 ## Next Steps
 
-- [Smart Contract](/docs/contract) — full API reference
-- [Deep Dive](/docs/deep-dive) — advanced topics and future extensions
+- [Smart Contract](./contract) — full API reference
+- [Deep Dive](./deep-dive) — advanced topics and future extensions
 

@@ -332,5 +332,5 @@ Current implementation: Open registration, immutable schemas, no on-chain disput
 
 ## Next Steps
 
-- [Deep Dive](/docs/deep-dive) — dimensionality and optimization
-- [Introduction](/docs/intro) — back to basics
+- [Deep Dive](./deep-dive) — dimensionality and optimization
+- [Introduction](./intro) — back to basics

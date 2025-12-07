@@ -258,7 +258,7 @@ distance(common, legendary) = 1  (different strings)  ← Same!
 Two "legendary gold idols" share exact strings and produce high similarity. But a "rare" artifact is no more similar to an "epic" artifact than to a "common" one—MinHash sees only "same" or "different".
 
 :::note Future Work
-For domains requiring raw numeric values, see [Typed MinHash Protocol](/docs/deep-dive#typed-minhash-protocol)—an EIP-712-inspired approach to bucketizing Solidity datatypes.
+For domains requiring raw numeric values, see [Typed MinHash Protocol](./deep-dive#typed-minhash-protocol)—an EIP-712-inspired approach to bucketizing Solidity datatypes.
 :::
 
 ## Mathematical Foundation
@@ -293,5 +293,5 @@ This variance is acceptable for threshold-based matching (e.g., "≥3/5 bands").
 
 ## Next Steps
 
-- [The Breakthrough](/docs/breakthrough) — using MinHash in signed intents
-- [Deep Dive](/docs/deep-dive) — advanced topics and future extensions
+- [The Breakthrough](./breakthrough) — using MinHash in signed intents
+- [Deep Dive](./deep-dive) — advanced topics and future extensions

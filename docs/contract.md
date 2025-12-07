@@ -340,5 +340,5 @@ npx hardhat run scripts/deploy.ts --network base-sepolia
 
 ## Next Steps
 
-- [Relic Safari](/docs/relic-safari) — see the contract in action
-- [Deep Dive](/docs/deep-dive) — advanced topics
+- [Relic Safari](./relic-safari) — see the contract in action
+- [Deep Dive](./deep-dive) — advanced topics

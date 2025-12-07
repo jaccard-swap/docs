@@ -275,6 +275,6 @@ Visit `http://localhost:5173` in Warpcast or browser.
 
 ## Next Steps
 
-- [Deep Dive](/docs/deep-dive) — advanced MinHash topics
-- [Protocol](/docs/protocol) — cross-collection standardization
+- [Deep Dive](./deep-dive) — advanced MinHash topics
+- [Protocol](./protocol) — cross-collection standardization
 

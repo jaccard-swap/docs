@@ -21,7 +21,7 @@ Instead of: "I want to buy token #12345"
 You say:    "I want to buy any NFT with ≥60% similarity to this trait set"
 ```
 
-This is achieved through **[MinHash](/docs/minhash)**—a locality-sensitive hashing technique that compresses arbitrary metadata into a compact `bytes32[5]` signature while preserving similarity relationships. (See [How MinHash Works](/docs/minhash) for the algorithm details, or [Deep Dive](/docs/deep-dive) for dimensionality considerations.)
+This is achieved through **[MinHash](./minhash)**—a locality-sensitive hashing technique that compresses arbitrary metadata into a compact `bytes32[5]` signature while preserving similarity relationships. (See [How MinHash Works](./minhash) for the algorithm details, or [Deep Dive](./deep-dive) for dimensionality considerations.)
 
 ### The Breakthrough
 
@@ -105,8 +105,8 @@ The game demonstrates the power of semi-fungible trading: players express prefer
 
 ## Documentation
 
-- [How MinHash Works](/docs/minhash) — the algorithm behind similarity estimation
-- [The Breakthrough](/docs/breakthrough) — onchain similarity in signed intents
-- [Smart Contract](/docs/contract) — JaccardSwap.sol reference
-- [Relic Safari](/docs/relic-safari) — the example application
-- [Deep Dive](/docs/deep-dive) — dimensionality, protocolization, and advanced topics
+- [How MinHash Works](./minhash) — the algorithm behind similarity estimation
+- [The Breakthrough](./breakthrough) — onchain similarity in signed intents
+- [Smart Contract](./contract) — JaccardSwap.sol reference
+- [Relic Safari](./relic-safari) — the example application
+- [Deep Dive](./deep-dive) — dimensionality, protocolization, and advanced topics
