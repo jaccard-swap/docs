@@ -1,0 +1,303 @@
+/**
+ * Jaccard Swap Documentation Theme
+ * Matches the Farcaster mini-app: stone dark + amber/gold accents
+ * 
+ * Color palette extracted from farcaster/src:
+ * - Background: stone-900 (#1c1917), stone-950 (#0c0a09)
+ * - Primary: amber-500 (#f59e0b), amber-600 (#d97706)
+ * - Secondary: purple-400 (#c084fc), violet-700 (#6d28d9)
+ * - Success: emerald-400 (#34d399)
+ * - Text: stone-300 (#d6d3d1), stone-400 (#a8a29e)
+ */
+
+/* ============================================================================
+   LIGHT MODE (fallback)
+   ============================================================================ */
+:root {
+  --ifm-color-primary: #d97706;
+  --ifm-color-primary-dark: #b45309;
+  --ifm-color-primary-darker: #92400e;
+  --ifm-color-primary-darkest: #78350f;
+  --ifm-color-primary-light: #f59e0b;
+  --ifm-color-primary-lighter: #fbbf24;
+  --ifm-color-primary-lightest: #fcd34d;
+  
+  --ifm-code-font-size: 95%;
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', 'Fira Code', monospace;
+  
+  --docusaurus-highlighted-code-line-bg: rgba(217, 119, 6, 0.15);
+}
+
+/* ============================================================================
+   DARK MODE (primary experience - matches the app)
+   ============================================================================ */
+[data-theme='dark'] {
+  /* Amber/Gold primary - from app gradients */
+  --ifm-color-primary: #f59e0b;
+  --ifm-color-primary-dark: #d97706;
+  --ifm-color-primary-darker: #b45309;
+  --ifm-color-primary-darkest: #92400e;
+  --ifm-color-primary-light: #fbbf24;
+  --ifm-color-primary-lighter: #fcd34d;
+  --ifm-color-primary-lightest: #fde68a;
+  
+  /* Stone backgrounds - from app */
+  --ifm-background-color: #0c0a09;
+  --ifm-background-surface-color: #1c1917;
+  --ifm-navbar-background-color: #0c0a09;
+  --ifm-footer-background-color: #0c0a09;
+  
+  /* Stone text colors */
+  --ifm-font-color-base: #d6d3d1;
+  --ifm-font-color-secondary: #a8a29e;
+  
+  /* Code highlighting */
+  --docusaurus-highlighted-code-line-bg: rgba(245, 158, 11, 0.15);
+  
+  /* Sidebar */
+  --ifm-menu-color: #d6d3d1;
+  --ifm-menu-color-active: #f59e0b;
+  --ifm-menu-color-background-active: rgba(245, 158, 11, 0.1);
+  
+  /* Table of contents */
+  --ifm-toc-link-color: #a8a29e;
+  --ifm-toc-border-color: rgba(245, 158, 11, 0.2);
+}
+
+/* ============================================================================
+   NAVBAR
+   ============================================================================ */
+[data-theme='dark'] .navbar {
+  border-bottom: 1px solid rgba(245, 158, 11, 0.15);
+}
+
+[data-theme='dark'] .navbar__title {
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+[data-theme='dark'] .navbar__link:hover {
+  color: #fbbf24;
+}
+
+/* ============================================================================
+   HERO (landing page)
+   ============================================================================ */
+.hero--primary {
+  background: linear-gradient(135deg, #0c0a09 0%, #1c1917 50%, #0c0a09 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero--primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse at 20% 80%, rgba(245, 158, 11, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(192, 132, 252, 0.05) 0%, transparent 40%);
+  pointer-events: none;
+}
+
+.hero__title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 50%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero__subtitle {
+  color: #a8a29e;
+}
+
+.hero__description {
+  max-width: 600px;
+  margin: 0 auto 1.5rem;
+  color: #d6d3d1;
+  opacity: 0.9;
+}
+
+.hero__description em {
+  color: #f59e0b;
+  font-style: normal;
+  font-weight: 600;
+}
+
+/* ============================================================================
+   FEATURES SECTION (homepage)
+   ============================================================================ */
+[data-theme='dark'] .homepage-features {
+  background: #0c0a09;
+}
+
+[data-theme='dark'] .homepage-features h3 {
+  color: #f59e0b;
+}
+
+[data-theme='dark'] .homepage-features p {
+  color: #a8a29e;
+}
+
+/* ============================================================================
+   CODE BLOCKS
+   ============================================================================ */
+[data-theme='dark'] pre {
+  background: #1c1917 !important;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+[data-theme='dark'] code {
+  background-color: rgba(245, 158, 11, 0.1);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  color: #fbbf24;
+}
+
+[data-theme='dark'] pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+/* ============================================================================
+   SIDEBAR
+   ============================================================================ */
+[data-theme='dark'] .theme-doc-sidebar-container {
+  border-right: 1px solid rgba(245, 158, 11, 0.1);
+}
+
+[data-theme='dark'] .menu__link--active {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.15) 0%, transparent 100%);
+  border-left: 2px solid #f59e0b;
+}
+
+[data-theme='dark'] .menu__list-item-collapsible:hover {
+  background: rgba(245, 158, 11, 0.05);
+}
+
+/* Category labels - purple accent like app's polymerase section */
+[data-theme='dark'] .menu__link--sublist {
+  color: #c084fc;
+}
+
+[data-theme='dark'] .menu__link--sublist:hover {
+  color: #d8b4fe;
+}
+
+/* ============================================================================
+   TABLES
+   ============================================================================ */
+[data-theme='dark'] table {
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+[data-theme='dark'] th {
+  background: rgba(245, 158, 11, 0.1);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+[data-theme='dark'] tr:nth-child(even) {
+  background: rgba(28, 25, 23, 0.5);
+}
+
+[data-theme='dark'] td, [data-theme='dark'] th {
+  border-color: rgba(245, 158, 11, 0.1);
+}
+
+/* ============================================================================
+   BLOCKQUOTES & ADMONITIONS
+   ============================================================================ */
+[data-theme='dark'] blockquote {
+  border-left: 4px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.05);
+  color: #d6d3d1;
+}
+
+/* Tip admonitions - emerald like app's success states */
+[data-theme='dark'] .alert--success {
+  --ifm-alert-background-color: rgba(52, 211, 153, 0.1);
+  --ifm-alert-border-color: #34d399;
+}
+
+/* Info admonitions - purple like app's polymerase */
+[data-theme='dark'] .alert--info {
+  --ifm-alert-background-color: rgba(192, 132, 252, 0.1);
+  --ifm-alert-border-color: #c084fc;
+}
+
+/* ============================================================================
+   FOOTER
+   ============================================================================ */
+[data-theme='dark'] .footer {
+  border-top: 1px solid rgba(245, 158, 11, 0.15);
+}
+
+[data-theme='dark'] .footer__title {
+  color: #f59e0b;
+}
+
+[data-theme='dark'] .footer__link-item {
+  color: #a8a29e;
+}
+
+[data-theme='dark'] .footer__link-item:hover {
+  color: #fbbf24;
+}
+
+/* ============================================================================
+   TOC (Table of Contents)
+   ============================================================================ */
+[data-theme='dark'] .table-of-contents__link:hover,
+[data-theme='dark'] .table-of-contents__link--active {
+  color: #f59e0b;
+}
+
+/* ============================================================================
+   SEARCH
+   ============================================================================ */
+[data-theme='dark'] .DocSearch-Button {
+  background: #1c1917;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+[data-theme='dark'] .DocSearch-Button:hover {
+  border-color: #f59e0b;
+}
+
+/* ============================================================================
+   MAIN CONTENT
+   ============================================================================ */
+[data-theme='dark'] main {
+  color: #d6d3d1;
+}
+
+[data-theme='dark'] main h1,
+[data-theme='dark'] main h2,
+[data-theme='dark'] main h3,
+[data-theme='dark'] main h4 {
+  color: #fef3c7;
+}
+
+/* ============================================================================
+   SCROLLBARS (webkit)
+   ============================================================================ */
+[data-theme='dark'] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-track {
+  background: #0c0a09;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.3);
+  border-radius: 4px;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.5);
+}
