@@ -89,7 +89,7 @@ const config: Config = {
           label: 'Docs',
         },
         {
-          href: 'https://github.com/jaccard-swap/jaccard-swap',
+          href: 'https://github.com/jaccard-swap',
           label: 'GitHub',
           position: 'right',
         },
