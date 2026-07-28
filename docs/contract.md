@@ -4,39 +4,45 @@ sidebar_position: 5
 
 # Smart Contract Reference
 
-This document covers the `JaccardSwap.sol` contract—the core settlement engine for similarity-based NFT trading.
+Jaccard Swap's settlement logic no longer lives in a standalone contract—it's one facet of a **diamond proxy** (EIP-2535). All facets share one address and one storage layout, so "the contract" in practice means "the diamond," and every facet below is really just a differently-shaped view into the same state.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           CONTRACT ARCHITECTURE                             │
+│                          JaccardDiamond (single address)                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ┌─────────────────────┐         ┌─────────────────────┐                    │
-│  │   JaccardERC1155    │         │      MockERC20      │                    │
-│  │  (NFT + MinHash)    │         │  (Payment Token)    │                    │
-│  │                     │         │                     │                    │
-│  │ • minHashes[id]     │         │ • ERC20Permit       │                    │
-│  │ • permit support    │         │ • faucet()          │                    │
-│  └──────────┬──────────┘         └──────────┬──────────┘                    │
-│             │                               │                               │
-│             └───────────────┬───────────────┘                               │
-│                             │                                               │
-│                             ▼                                               │
-│              ┌──────────────────────────────┐                               │
-│              │        JaccardSwap           │                               │
-│              │                              │                               │
-│              │ • consumeAuction()           │                               │
-│              │ • countMatches()             │                               │
-│              │ • EIP-712 verification       │                               │
-│              │ • Permit execution           │                               │
-│              └──────────────────────────────┘                               │
+│  Shared AppStorage: minHashes, usedBids/usedAuctions, ERC20/ERC1155/badge  │
+│  balances - every facet below reads and writes the same storage slots.     │
+│                                                                             │
+│  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐       │
+│  │  JaccardSwapFacet  │  │JaccardERC1155Facet│  │   EssenceFacet    │       │
+│  │                    │  │                    │  │                   │       │
+│  │ • consumeAuction() │  │ • NFT + MinHash    │  │ • Full ERC20Permit│       │
+│  │ • countMatches()   │  │ • permit transfers │  │   ("Essence")     │       │
+│  │ • EIP-712 verify   │  │ • polymerase()     │  │ • mint/burn, only │       │
+│  │                    │  │ • upgradeTrait()   │  │   callable by the │       │
+│  │                    │  │   (Forge)          │  │   diamond's owner │       │
+│  └───────────────────┘  └───────────────────┘  └───────────────────┘       │
+│                                                                             │
+│  ┌───────────────────┐  ┌───────────────────┐                              │
+│  │  CollectionFacet   │  │    BadgesFacet     │   + rocketh's standard     │
+│  │                    │  │                    │   DiamondLoupeFacet /       │
+│  │ • completeCupboard │  │ • badgeCount()     │   OwnershipFacet /          │
+│  │   (burns 7 NFTs,   │  │ • ownerOf()        │   DiamondCutFacet for       │
+│  │   mints a badge)   │  │ • locked() (5192)  │   introspection/upgrades   │
+│  │                    │  │ • cupboardOf()     │                             │
+│  └───────────────────┘  └───────────────────┘                              │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Why a diamond, not separate contracts?** Two reasons that matter in practice: every facet needs to read the *same* MinHash and balance data (a separate `JaccardERC1155.sol` calling back into a separate `JaccardSwap.sol` is exactly the cross-contract-call overhead a diamond avoids), and new game systems (Forge's `upgradeTrait`, Museum's `completeCupboard`/badges) could be added as new facets without redeploying or migrating anything that already existed. Facets that mutate another facet's conceptual domain—like `CollectionFacet` burning ERC1155 balances and minting a badge—do it by writing directly into the shared `AppStorage` struct rather than calling into `JaccardERC1155Facet`/`BadgesFacet` (facets don't share Solidity-level internal functions across the proxy boundary, only storage), the same pattern `JaccardERC1155Facet` itself already uses to mint/burn Essence without calling `EssenceFacet`.
+
 ## Core Structs
+
+All three structs below are copied directly from `libraries/LibAppStorage.sol`—the authoritative definitions, not simplified examples.
 
 ### Bid
 
@@ -44,11 +50,11 @@ A bidder's intent to buy NFTs matching a similarity threshold:
 
 ```solidity
 struct Bid {
-    bytes4 salt;               // Unique identifier
-    uint256 deadline;          // Expiration timestamp
-    bytes32[5] targetMinHash;  // Desired traits as 5-band MinHash
-    uint8 minMatches;          // Similarity threshold (2-5 bands)
-    ERC20PermitData permit;    // Payment authorization
+    bytes4 salt;
+    uint256 deadline;
+    bytes8[20] targetMinHash;
+    uint8 minMatches;
+    ERC20PermitData permit;
 }
 ```
 
@@ -56,9 +62,11 @@ struct Bid {
 |-------|------|-------------|
 | `salt` | `bytes4` | Random bytes for uniqueness |
 | `deadline` | `uint256` | Unix timestamp after which bid is invalid |
-| `targetMinHash` | `bytes32[5]` | MinHash of desired traits |
-| `minMatches` | `uint8` | Minimum bands that must match (2-5) |
+| `targetMinHash` | `bytes8[20]` | MinHash of desired traits (20 bands, 8 bytes each) |
+| `minMatches` | `uint8` | Minimum bands that must match (2-20) |
 | `permit` | `ERC20PermitData` | Nested payment data |
+
+`bytes8[20]` tight-packs into exactly **5 storage slots** with zero padding (4 elements per slot)—the same number of slots the earlier `bytes32[5]` layout used for only 5 hash functions. Going from 5 to 20 bands was, storage-wise, free.
 
 ### ERC20PermitData
 
@@ -67,7 +75,7 @@ Payment authorization embedded in bids:
 ```solidity
 struct ERC20PermitData {
     address owner;    // Bidder address
-    address spender;  // JaccardSwap contract
+    address spender;  // The diamond's own address
     uint256 value;    // Bid amount in tokens
     uint256 deadline; // Permit expiration
     uint8 v;          // Signature component
@@ -84,17 +92,17 @@ Auctioneer's NFT listing with nested permits and bids:
 struct Auction {
     bytes4 salt;
     uint256 deadline;
-    address nft;                    // JaccardERC1155 address
+    address nft;                    // The diamond's own address (NFT and swap logic share it)
     address token;                  // Payment token address
     uint256 reservePrice;           // Minimum bid amount
     JaccardERC1155Permit nftPermit; // NFT transfer permit
     bytes nftPermitSignature;       // Auctioneer's NFT permit signature
-    Bid[] bids;                     // Array of bids (highest first)
+    Bid[] bids;                     // Array of bids, must be pre-sorted highest → lowest
     bytes[] bidSignatures;          // Corresponding bid signatures
 }
 ```
 
-## Core Functions
+## Core Functions (`JaccardSwapFacet`)
 
 ### consumeAuction
 
@@ -109,25 +117,21 @@ function consumeAuction(
 
 **Flow**:
 
-1. Verify auction signature matches NFT permit owner
-2. Check auction hasn't expired or been used
-3. Fetch NFT's MinHash from JaccardERC1155
-4. Loop through bids (must be pre-sorted highest → lowest):
-   - Skip if below reserve price
-   - Skip if expired
-   - Skip if `minMatches` outside [2,5]
-   - Count matching bands with `countMatches()`
-   - Skip if matches < minMatches
+1. Verify auction hasn't expired, its signer is the NFT permit's owner, and it hasn't already been settled
+2. Require `bids.length == bidSignatures.length` and that bids are pre-sorted strictly highest → lowest
+3. Read the NFT's MinHash directly out of shared diamond storage (`s.minHashes[tokenId]`—no external call needed, `JaccardERC1155Facet`'s data lives in the same storage this facet reads)
+4. Loop through bids in order:
+   - Skip if below reserve price, expired, or `minMatches` outside `[2, 20]`
+   - Count matching bands with `countMatches()`; skip if below `minMatches`
    - Verify bid signature matches permit owner
-   - Try ERC20 permit + transfer
-   - If successful: transfer NFT, emit event, return
-5. If no bid succeeded: revert
+   - Try ERC20 permit + transfer; on success, transfer the NFT and emit `AuctionSettled`
+5. If no bid succeeded: `revert NoValidBids(topBidRejectReason)` — a `BidRejectReason` enum (`BelowReserve`, `BidExpired`, `PermitExpired`, `BadMinMatchesRange`, `InsufficientMatches`, `BadBidSignature`, `WrongPermitSpender`, `AlreadyUsed`, `PaymentDeclined`) captured from the *highest* bid only, since a lower bid failing is expected once a higher one wins—the top bid's rejection reason is the one actually worth debugging.
 
 **Example**:
 
 ```typescript
 // Settle auction with highest valid bid
-await jaccardSwap.write.consumeAuction([fullAuction, auctionSig])
+await diamond.write.consumeAuction([fullAuction, auctionSig])
 ```
 
 ### countMatches
@@ -136,19 +140,10 @@ Count matching MinHash bands:
 
 ```solidity
 function countMatches(
-    bytes32[5] calldata targetMinHash,
-    bytes32[5] memory nftMinHash
-) public pure returns (uint8 matches)
-```
-
-**Implementation**:
-
-```solidity
-function countMatches(
-    bytes32[5] calldata targetMinHash,
-    bytes32[5] memory nftMinHash
+    bytes8[20] memory targetMinHash,
+    bytes8[20] memory nftMinHash
 ) public pure returns (uint8 matches) {
-    for (uint8 i = 0; i < 5; i++) {
+    for (uint8 i = 0; i < 20; i++) {
         if (targetMinHash[i] == nftMinHash[i]) {
             matches++;
         }
@@ -156,27 +151,49 @@ function countMatches(
 }
 ```
 
-**Gas**: ~500 gas (constant regardless of trait count)
+**Gas**: roughly ~2,000 gas (constant regardless of trait count—dominated by the 20-iteration loop, not by how many traits the underlying NFT actually has).
 
 ### Verification Functions
 
 ```solidity
 // Verify bid signature, return signer
-function verifyBid(Bid calldata bid, bytes calldata signature) 
+function verifyBid(Bid calldata bid, bytes calldata signature)
     public view returns (address)
 
 // Hash bid for signing (includes EIP-712 domain)
-function hashBid(Bid calldata bid) 
+function hashBid(Bid calldata bid)
     public view returns (bytes32)
 
 // Hash auction for signing
-function hashAuction(Auction calldata auction) 
+function hashAuction(Auction calldata auction)
     public view returns (bytes32)
 ```
 
+## Other Facets
+
+### JaccardERC1155Facet
+
+The NFT itself, plus two of the game's core mechanics—both live here rather than in their own facets, since both are just different ways of mutating an NFT's own MinHash/traits:
+
+- `polymerase(...)` — Polymerase fusion: burns a "consumed" artifact, levels up the target's matching traits, mints Essence for the rest
+- `upgradeTrait(...)` — Forge: direct Essence spend to level up a single trait, no second artifact
+- `getMinHashByTokenId(uint256) → bytes8[20]` — the same read `JaccardSwapFacet.consumeAuction` does internally, exposed externally for anyone who wants to query without settling anything
+- `transferFromWithPermit(...)` — gasless NFT transfer via EIP-712 permit
+- Standard ERC1155 reads (`balanceOf`, `isApprovedForAll`, `uri`, `supportsInterface`)
+
+### EssenceFacet
+
+A complete `ERC20Permit` implementation for Essence, living as a facet rather than a separate token contract—`name`/`symbol`/`decimals`/`totalSupply`/`balanceOf`/`allowance`/`permit`/`nonces`/`DOMAIN_SEPARATOR`, plus owner-gated `mint`/`burn`. Its own EIP-712 domain is `"Essence"` (see [Type Hashes](#type-hashes) below)—the one facet with a domain that isn't `JaccardDiamond`, alongside `Scrip` (a fully separate ERC20 contract, not a facet).
+
+### CollectionFacet / BadgesFacet — the Museum
+
+`CollectionFacet.completeCupboard(...)` is the one function: given 7 tokenIds and a `cupboardKey` (see [Relic Safari](./relic-safari#6-museum)), it verifies ownership of all 7, burns them (writing directly into `AppStorage`'s ERC1155 balances and re-emitting `TransferBatch`, rather than calling `JaccardERC1155Facet`), and mints a badge by writing directly into badge storage and emitting `Transfer(0x0, owner, badgeId)` plus an EIP-5192 `Locked(badgeId)` event.
+
+`BadgesFacet` is the read-only (and permanently-locked) surface over that badge storage: `badgeCount(address)`, `ownerOf(uint256)`, `locked(uint256)` (always `true`—this is what makes it soulbound), `cupboardOf(uint256)`, `tokenURI(uint256)`. Its transfer functions exist only to satisfy the ERC-721 interface and unconditionally revert.
+
 ## Type Hashes
 
-EIP-712 type hashes for structured data signing:
+EIP-712 type hashes for structured data signing (from `hashBid`/`hashAuction` above):
 
 ```solidity
 bytes32 public constant ERC20_PERMIT_TYPEHASH = keccak256(
@@ -184,13 +201,25 @@ bytes32 public constant ERC20_PERMIT_TYPEHASH = keccak256(
 );
 
 bytes32 public constant BID_TYPEHASH = keccak256(
-    "Bid(bytes4 salt,uint256 deadline,bytes32[5] targetMinHash,uint8 minMatches,ERC20PermitData permit)ERC20PermitData(address owner,address spender,uint256 value,uint256 deadline)"
+    "Bid(bytes4 salt,uint256 deadline,bytes8[20] targetMinHash,uint8 minMatches,ERC20PermitData permit)ERC20PermitData(address owner,address spender,uint256 value,uint256 deadline)"
 );
 
 bytes32 public constant AUCTION_TYPEHASH = keccak256(
     "Auction(bytes4 salt,uint256 deadline,address nft,address token,uint256 reservePrice,JaccardERC1155Permit nftPermit,bytes nftPermitSignature)JaccardERC1155Permit(address owner,address spender,uint256 tokenId,uint256 amount,uint256 deadline,bytes4 salt)"
 );
 ```
+
+EIP-712 domains, from `EIP712_DOMAINS` in `@shared/constants` (the source of truth every service imports rather than hardcoding):
+
+```typescript
+export const EIP712_DOMAINS = {
+  JACCARD_SWAP: 'JaccardDiamond',   // JaccardSwapFacet + JaccardERC1155Facet
+  JACCARD_ERC1155: 'JaccardDiamond', // unified - one domain, whichever facet you're signing for
+  SCRIP: 'Scrip', // Scrip is a separate ERC20Permit contract, not a facet - its domain must match its own constructor arg exactly
+} as const
+```
+
+A mismatched domain here doesn't fail loudly—the signature is still well-formed, it just recovers to an unrelated address, so `permit()` silently reverts downstream instead of erroring at sign time.
 
 ## Events
 
@@ -200,13 +229,13 @@ Emitted when an auction is successfully settled:
 
 ```solidity
 event AuctionSettled(
-    address indexed nft,           // NFT contract
+    address indexed nft,           // NFT contract (the diamond itself)
     address indexed token,         // Payment token
     uint256 indexed nftId,         // Token ID transferred
     uint256 amount,                // Payment amount
     address auctioneer,            // Seller
     address winner,                // Buyer
-    uint8 similarityMatches        // How many bands matched (2-5)
+    uint8 similarityMatches        // How many of 20 bands matched
 );
 ```
 
@@ -215,6 +244,7 @@ event AuctionSettled(
 ```solidity
 mapping(bytes32 => bool) public usedBids;     // Prevent bid replay
 mapping(bytes32 => bool) public usedAuctions; // Prevent auction replay
+mapping(uint256 => bytes8[20]) minHashes;     // Per-tokenId MinHash signature
 ```
 
 ## Security Model
@@ -236,23 +266,13 @@ Modifying any field invalidates the signature.
 
 ### Graceful Degradation
 
-If a bid's permit fails (insufficient balance, expired, revoked):
-
-```solidity
-if (_tryPermitAndTransfer(auction.token, auction.bids[i].permit, auctioneer)) {
-    // Success - settle
-    return;
-}
-// Failure - try next bid
-```
-
-The contract automatically falls back to the next-highest valid bid.
+If a bid's permit fails (insufficient balance, expired, revoked), `consumeAuction` automatically moves on to the next-highest valid bid in the same loop rather than reverting the whole settlement—see the `consumeAuction` flow above.
 
 ## Gas Costs
 
 | Operation | Approximate Gas |
 |-----------|-----------------|
-| `countMatches` | ~500 |
+| `countMatches` (20 bands) | ~2,000 |
 | `verifyBid` | ~5,000 |
 | `consumeAuction` (1 bid, success) | ~150,000 |
 | `consumeAuction` (5 bids, last wins) | ~200,000 |
@@ -262,16 +282,16 @@ The contract automatically falls back to the next-highest valid bid.
 ### Signing a Bid (TypeScript)
 
 ```typescript
-import { BidTypes } from '@shared/constants'
+import { BidTypes, EIP712_DOMAINS, computeMinHash } from '@shared/constants'
 
 const bidMessage = {
   salt: randomSalt(),
   deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
   targetMinHash: computeMinHash({ rarity: 'legendary', material: 'gold' }),
-  minMatches: 3,
+  minMatches: 8,
   permit: {
     owner: bidderAddress,
-    spender: jaccardSwapAddr,
+    spender: diamondAddr,
     value: parseEther('100'),
     deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
   },
@@ -279,10 +299,10 @@ const bidMessage = {
 
 const bidSig = await wallet.signTypedData({
   domain: {
-    name: 'JaccardSwap',
+    name: EIP712_DOMAINS.JACCARD_SWAP, // 'JaccardDiamond'
     version: '1',
     chainId,
-    verifyingContract: jaccardSwapAddr,
+    verifyingContract: diamondAddr,
   },
   types: BidTypes,
   primaryType: 'Bid',
@@ -297,7 +317,7 @@ const bidSig = await wallet.signTypedData({
 const fullAuction = {
   salt: auctionSalt,
   deadline: auctionDeadline,
-  nft: jaccardNftAddr,
+  nft: diamondAddr,       // same address as the diamond itself
   token: paymentTokenAddr,
   reservePrice: parseEther('50'),
   nftPermit: nftPermitData,
@@ -307,12 +327,10 @@ const fullAuction = {
 }
 
 // Anyone can settle
-await jaccardSwap.write.consumeAuction([fullAuction, auctionSig])
+await diamond.write.consumeAuction([fullAuction, auctionSig])
 ```
 
 ## JaccardERC1155 Interface
-
-The NFT contract must implement:
 
 ```solidity
 interface IJaccardERC1155 {
@@ -322,21 +340,23 @@ interface IJaccardERC1155 {
         address to,
         bytes memory signature
     ) external;
-    
+
     // Retrieve stored MinHash for similarity matching
-    function getMinHashByTokenId(uint256 tokenId) 
-        external view returns (bytes32[5] memory);
+    function getMinHashByTokenId(uint256 tokenId)
+        external view returns (bytes8[20] memory);
 }
 ```
 
 ## Deployment
 
-**Network**: Base Sepolia (chainId: 84532)
+**Network**: Ethereum Sepolia (chainId: 11155111), plus a local Anvil/Hardhat network (chainId: 31337) for development.
 
 ```bash
 cd hardhat
-npx hardhat run scripts/deploy.ts --network base-sepolia
+npx hardhat deploy --network sepolia
 ```
+
+Deployment is managed by [rocketh](https://github.com/wighawag/rocketh)'s `diamond()` helper (`hardhat/deploy/00_deploy_diamond.ts`), which cuts all facets onto the diamond in one deploy step and writes ABIs to `shared/contracts/<chainId>/` for the API and frontend to import directly.
 
 ## Next Steps
 

@@ -21,7 +21,7 @@ Instead of: "I want to buy token #12345"
 You say:    "I want to buy any NFT with ≥60% similarity to this trait set"
 ```
 
-This is achieved through **[MinHash](./minhash)**—a locality-sensitive hashing technique that compresses arbitrary metadata into a compact `bytes32[5]` signature while preserving similarity relationships. (See [How MinHash Works](./minhash) for the algorithm details, or [Deep Dive](./deep-dive) for dimensionality considerations.)
+This is achieved through **[MinHash](./minhash)**—a locality-sensitive hashing technique that compresses arbitrary metadata into a compact `bytes8[20]` signature while preserving similarity relationships. (See [How MinHash Works](./minhash) for the algorithm details—and for how much of that math you actually need to care about—or [Deep Dive](./deep-dive) for dimensionality considerations.)
 
 ### The Breakthrough
 
@@ -31,9 +31,9 @@ The key innovation is embedding similarity checks inside EIP-712 signed intents:
 struct Bid {
     bytes4 salt;
     uint256 deadline;
-    bytes32[5] targetMinHash;  // Desired traits as MinHash
-    uint8 minMatches;          // Similarity threshold (2-5 bands)
-    ERC20PermitData permit;    // Payment authorization
+    bytes8[20] targetMinHash; // Desired traits as MinHash
+    uint8 minMatches;         // Similarity threshold (2-20 bands)
+    ERC20PermitData permit;   // Payment authorization
 }
 ```
 
@@ -51,7 +51,7 @@ A bid becomes a **standing order** that matches any NFT meeting the similarity t
 │   │ Desired Traits  │              │  NFT Metadata   │          │
 │   │ rarity:legendary│              │ rarity:legendary│          │
 │   │ material:gold   │              │ material:gold   │          │
-│   │ age:ancient     │              │ form:tablet     │          │
+│   │ age:antediluvian│              │ form:tablet     │          │
 │   └────────┬────────┘              └────────┬────────┘          │
 │            │                                │                   │
 │            ▼                                ▼                   │
@@ -62,8 +62,8 @@ A bid becomes a **standing order** that matches any NFT meeting the similarity t
 │            ▼                                ▼                   │
 │   ┌─────────────────┐              ┌─────────────────┐          │
 │   │ targetMinHash   │              │   nftMinHash    │          │
-│   │ [0x3a2...][5]   │              │ [0x3a2...][5]   │          │
-│   │ minMatches: 3   │              │                 │          │
+│   │ [0x3a2...][20]  │              │ [0x3a2...][20]  │          │
+│   │ minMatches: 8   │              │                 │          │
 │   └────────┬────────┘              └────────┬────────┘          │
 │            │                                │                   │
 │            └────────────┬───────────────────┘                   │
@@ -72,7 +72,7 @@ A bid becomes a **standing order** that matches any NFT meeting the similarity t
 │              ┌─────────────────────┐                            │
 │              │   ONCHAIN MATCH     │                            │
 │              │                     │                            │
-│              │ countMatches() ≥ 3? │                            │
+│              │ countMatches() ≥ 8? │                            │
 │              │      ✓ SETTLE       │                            │
 │              └─────────────────────┘                            │
 │                                                                 │
@@ -91,22 +91,31 @@ A bid becomes a **standing order** that matches any NFT meeting the similarity t
 | **Standing Orders** | One bid can match multiple auctions |
 | **Trustless Matching** | Similarity computed entirely onchain |
 | **Graceful Degradation** | Falls back to next-highest bid on permit failure |
-| **Configurable Tolerance** | 2/5 to 5/5 similarity thresholds |
+| **Configurable Tolerance** | 2/20 to 20/20 similarity thresholds |
+
+:::note Design philosophy
+20 bands wasn't chosen by solving for a target statistical confidence—it's a
+gas/UX tradeoff that happened to also feel right when watching real matches
+happen. See [How MinHash Works](./minhash) for more on that distinction; the
+math is there for the curious, but it isn't the thing the system was tuned
+against.
+:::
 
 ## Example Application: Relic Safari
 
-Jaccard Swap powers **Relic Safari**—a collectible trading game where players excavate, trade, and upgrade ancient artifacts.
+Jaccard Swap powers **Relic Safari**—a collectible trading game built around one loop: earn Leaderboard points by assembling matched sets of artifacts and freezing them into soulbound badges.
 
-- **Excavate** artifacts with random traits (rarity, material, age, form, site, inscription)
-- **Trade** using similarity-based bids ("I want any legendary orichalcum artifact")
-- **Upgrade** via polymerization—fuse two similar artifacts to level up traits
+- **Excavate** artifacts with random traits (rarity, quality, inscription, age, material, form, site)
+- **Trade** in the Bazaar using similarity-based bids ("I want any legendary orichalcum artifact"), or swap currencies directly in the Exchange
+- **Upgrade** two ways: fuse two similar artifacts via Polymerase (free trait levels on match, Essence from the rest), or spend Essence directly via Forge for a guaranteed single-trait upgrade
+- **Collect** in the Museum: assemble one fully-upgraded artifact for every Form sharing a Site+Age+Material, then freeze the set into a permanent badge for Leaderboard points
 
-The game demonstrates the power of semi-fungible trading: players express preferences as trait combinations, and the market matches them automatically.
+The game demonstrates the power of semi-fungible trading: players express preferences as trait combinations, and the market matches them automatically—while the Museum gives the whole loop a destination beyond "keep digging."
 
 ## Documentation
 
 - [How MinHash Works](./minhash) — the algorithm behind similarity estimation
 - [The Breakthrough](./breakthrough) — onchain similarity in signed intents
-- [Smart Contract](./contract) — JaccardSwap.sol reference
+- [Smart Contract](./contract) — the JaccardDiamond reference
 - [Relic Safari](./relic-safari) — the example application
 - [Deep Dive](./deep-dive) — dimensionality, protocolization, and advanced topics

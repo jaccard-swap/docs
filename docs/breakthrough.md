@@ -35,28 +35,28 @@ Jaccard Swap replaces exact `tokenId` with a **similarity constraint**:
 struct Bid {
     bytes4 salt;
     uint256 deadline;
-    bytes32[5] targetMinHash;  // ← Desired traits as MinHash
+    bytes8[20] targetMinHash; // ← Desired traits as MinHash
     // e.g. ["rarity:rare", "material:gold", "form:idol"]
-    //   → hash(trait, seed₀), hash(trait, seed₁), ... hash(trait, seed₄)
-    //   → [0x7f3a..., 0x2b8c..., 0x9d1e..., 0x4c5f..., 0x8a2b...]
-    uint8 minMatches;          // ← Similarity threshold (2-5)
+    //   → hash(trait, seed₀), hash(trait, seed₁), ... hash(trait, seed₁₉)
+    //   → [0x7f3a2b9c..., 0x2b8c1d4e..., ... 18 more bands]
+    uint8 minMatches;         // ← Similarity threshold (2-20)
     ERC20PermitData permit;
 }
 ```
 
-One signature expresses: *"I'll pay this amount for any NFT with ≥N/5 similarity to these traits."*
+One signature expresses: *"I'll pay this amount for any NFT with ≥N/20 similarity to these traits."*
 
 ## Onchain Similarity Verification
 
-The magic happens in `consumeAuction`:
+The magic happens in the diamond's `JaccardSwapFacet`, in `consumeAuction`:
 
 ```solidity
 function countMatches(
-    bytes32[5] memory targetMinHash, 
-    bytes32[5] memory nftMinHash
+    bytes8[20] memory targetMinHash,
+    bytes8[20] memory nftMinHash
 ) public pure returns (uint8 matches) {
     matches = 0;
-    for (uint8 i = 0; i < 5; i++) {
+    for (uint8 i = 0; i < 20; i++) {
         if (targetMinHash[i] == nftMinHash[i]) {
             matches++;
         }
@@ -64,28 +64,28 @@ function countMatches(
 }
 ```
 
-This is **O(5)** regardless of how many traits the NFTs have—comparing just 160 bytes per NFT. As NFTs gain more traits, the compression benefit grows (100 traits still compresses to 5 comparisons). For higher precision, increase k: accuracy improves as $1/\sqrt{k}$.
+This is **O(20)** regardless of how many traits the NFTs have—comparing just 160 bytes per NFT. As NFTs gain more traits, the compression benefit grows (100 traits still compresses to 20 comparisons). For higher precision, increase k: accuracy improves as $1/\sqrt{k}$.
 
 The settlement logic:
 
 ```solidity
-function consumeAuction(FullAuction calldata auction, bytes calldata auctionSig) 
-    external nonReentrant 
+function consumeAuction(FullAuction calldata auction, bytes calldata auctionSig)
+    external nonReentrant
 {
     // 1. Verify auction signature
     _verifyAuctionSignature(auction, auctionSig);
-    
-    // 2. Get NFT's MinHash from the contract
-    bytes32[5] memory nftMinHash = IJaccardERC1155(auction.nft)
+
+    // 2. Get NFT's MinHash from the diamond's own ERC1155 facet
+    bytes8[20] memory nftMinHash = IJaccardERC1155(auction.nft)
         .getMinHashByTokenId(auction.nftPermit.tokenId);
-    
+
     // 3. Find best matching bid
     for (uint256 i = 0; i < auction.bids.length; i++) {
         Bid calldata bid = auction.bids[i];
-        
+
         // Count similarity bands
         uint8 matches = countMatches(bid.targetMinHash, nftMinHash);
-        
+
         // Check threshold
         if (matches >= bid.minMatches && /* other validity checks */) {
             // Execute trade
@@ -93,7 +93,7 @@ function consumeAuction(FullAuction calldata auction, bytes calldata auctionSig)
             return;
         }
     }
-    
+
     revert("No valid bids");
 }
 ```
@@ -103,12 +103,13 @@ function consumeAuction(FullAuction calldata auction, bytes calldata auctionSig)
 Security comes from carefully structured typed data signing:
 
 ```typescript
-// Bid type definition (must match contract exactly)
+// Bid type definition (must match the contract exactly - shared/constants
+// is the single source of truth both sides import from)
 const BidTypes = {
   Bid: [
     { name: 'salt', type: 'bytes4' },
     { name: 'deadline', type: 'uint256' },
-    { name: 'targetMinHash', type: 'bytes32[5]' },
+    { name: 'targetMinHash', type: 'bytes8[20]' },
     { name: 'minMatches', type: 'uint8' },
     { name: 'permit', type: 'ERC20PermitData' },
   ],
@@ -126,21 +127,21 @@ When a bidder signs:
 ```typescript
 const bidSig = await wallet.signTypedData({
   domain: {
-    name: 'JaccardSwap',
+    name: 'JaccardDiamond', // unified EIP-712 domain for every facet
     version: '1',
     chainId,
-    verifyingContract: jaccardSwapAddr,
+    verifyingContract: diamondAddr,
   },
   types: BidTypes,
   primaryType: 'Bid',
   message: {
     salt: randomSalt(),
     deadline,
-    targetMinHash: [band0, band1, band2, band3, band4],
-    minMatches: 3,  // Accept 60%+ similarity
+    targetMinHash: computeMinHash({ rarity: 'legendary', material: 'gold' }),
+    minMatches: 8, // require at least 8/20 bands - a "medium resonance" style threshold
     permit: {
       owner: bidderAddress,
-      spender: jaccardSwapAddr,
+      spender: diamondAddr,
       value: bidAmount,
       deadline,
     },
@@ -165,7 +166,7 @@ The signature commits to:
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
 │  │ 1. Choose traits: { rarity: legendary, material: gold }                │  │
 │  │ 2. computeMinHash() → targetMinHash                                    │  │
-│  │ 3. Sign bid (EIP-712) with minMatches: 3                               │  │
+│  │ 3. Sign bid (EIP-712) with a minMatches threshold                      │  │
 │  │ 4. Sign ERC20 permit for payment                                       │  │
 │  │ 5. Submit signatures to API (no gas!)                                  │  │
 │  └────────────────────────────────────────────────────────────────────────┘  │
@@ -210,7 +211,7 @@ ERC20 permits are signed separately but included in the bid struct:
 ```solidity
 struct ERC20PermitData {
     address owner;     // Bidder
-    address spender;   // JaccardSwap contract
+    address spender;   // JaccardSwapFacet (the diamond itself)
     uint256 value;     // Bid amount
     uint256 deadline;  // Must match bid deadline
 }
@@ -248,16 +249,15 @@ The breakthrough enables **standing buy orders**:
 // Bidder signs once
 const standingBid = {
   targetMinHash: computeMinHash({ rarity: 'legendary', material: 'gold' }),
-  minMatches: 3,
+  minMatches: 8,
   amount: parseEther('100'),
-  deadline: oneWeekFromNow,
+  deadline: oneWeekFromNow, // standing bids in Relic Safari's UI default to a 7-day window
 }
 
 // This single signature can match:
-// - "Legendary Gold Idol" (4/5 match) ✓
-// - "Legendary Gold Tablet" (4/5 match) ✓
-// - "Epic Gold Amulet" (3/5 match) ✓
-// - "Legendary Silver Mask" (2/5 match) ✗ below threshold
+// - "Legendary Gold Idol" (18/20 match) ✓
+// - "Legendary Gold Tablet" (16/20 match) ✓
+// - "Epic Gold Amulet" (11/20 match) ✗ below threshold
 ```
 
 When any matching NFT is auctioned, the standing bid automatically applies.
@@ -266,11 +266,11 @@ When any matching NFT is auctioned, the standing bid automatically applies.
 
 | Operation | Gas Cost |
 |-----------|----------|
-| `countMatches` | ~500 gas |
+| `countMatches` (20 bands) | ~2,000 gas |
 | `consumeAuction` (1 bid) | ~150k gas |
 | `consumeAuction` (5 bids) | ~180k gas |
 
-The similarity check adds negligible overhead compared to token transfers.
+The similarity check adds negligible overhead compared to token transfers—going from 5 to 20 bands is a few thousand extra gas, not a meaningful cost increase relative to the ERC20 permit + NFT transfer that dominates each settlement.
 
 ## Comparison with Alternatives
 
@@ -287,4 +287,3 @@ Jaccard Swap achieves trustless matching with reasonable expressiveness at low c
 
 - [Smart Contract](./contract) — full API reference
 - [Deep Dive](./deep-dive) — advanced topics and future extensions
-

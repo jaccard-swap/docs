@@ -15,11 +15,13 @@ MinHash signatures are defined by two parameters:
 - **k** = number of bands (hashes)
 - **s** = bits per hash (bytes32 = 256 bits)
 
-**Current Implementation**: k=5, s=256
+**Current Implementation**: k=20, s=64 (each band truncated to `bytes8`)
 
 ```
-Storage per NFT: 5 × 32 bytes = 160 bytes
+Storage per NFT: 20 × 8 bytes = 160 bytes
 ```
+
+(An earlier version of Relic Safari ran k=5, s=256 - same 160 bytes, but only 5 bands' worth of resolution. See [How MinHash Works](./minhash#why-20-bands) for how truncating each band's width paid for 4x the bands at the same storage cost.)
 
 ### Finding Optimal k
 
@@ -29,15 +31,15 @@ $$
 \text{Estimation Error} = \sqrt{\frac{J(1-J)}{k}}
 $$
 
-| k | Storage | Error (J=0.5) | Use Case |
+| k | Storage (bytes8/band) | Error (J=0.5) | Use Case |
 |---|---------|---------------|----------|
-| 1 | 32B | 50% | Coarse filtering |
-| 5 | 160B | 22% | General trading |
-| 10 | 320B | 16% | High-value items |
-| 25 | 800B | 10% | Analytics |
-| 100 | 3.2KB | 5% | Off-chain only |
+| 1 | 8B | 100% | Coarse filtering |
+| 5 | 40B | 45% | Earlier version |
+| **20** | **160B** | **22%** | **Current** |
+| 25 | 200B | 20% | Marginal gain over 20 |
+| 100 | 800B | 10% | Off-chain only |
 
-For onchain use, k=5 balances gas costs with acceptable accuracy.
+For onchain use, k=20 balances gas/storage costs with acceptable accuracy - though as noted in [How MinHash Works](./minhash), "acceptable accuracy" here means "felt right in practice," not a derived target.
 
 ### Unique Mapping
 
@@ -103,7 +105,7 @@ Use two MinHashes per token:
 
 ```solidity
 struct TokenData {
-    bytes32[5] similarityHash;  // For Jaccard matching (k=5)
+    bytes8[20] similarityHash;  // For Jaccard matching (k=20, current)
     bytes32 uniqueHash;         // For O(1) lookup (compressed larger k)
 }
 ```
@@ -316,37 +318,39 @@ This is **O(k × avg bucket size)** instead of **O(n)** for collection-wide sear
 
 ### False Positive Rate
 
-Probability of $k/5$ matches with true Jaccard $J$:
+Probability of $\geq t$ matches (out of $k=20$) with true Jaccard $J$:
 
 $$
-P(\text{matches} \geq k | J) = \sum_{i=k}^{5} \binom{5}{i} J^i (1-J)^{5-i}
+P(\text{matches} \geq t | J) = \sum_{i=t}^{20} \binom{20}{i} J^i (1-J)^{20-i}
 $$
 
-| True J | P(≥2/5) | P(≥3/5) | P(≥4/5) | P(≥5/5) |
-|--------|---------|---------|---------|---------|
-| 0.1 | 8% | 1% | 0% | 0% |
-| 0.2 | 26% | 6% | 1% | 0% |
-| 0.3 | 47% | 16% | 3% | 0% |
-| 0.4 | 66% | 32% | 9% | 1% |
-| 0.5 | 81% | 50% | 19% | 3% |
-| 0.6 | 91% | 68% | 34% | 8% |
-| 0.7 | 97% | 84% | 53% | 17% |
-| 0.8 | 99% | 94% | 74% | 33% |
-| 0.9 | 100% | 99% | 92% | 59% |
+The four thresholds below (4, 8, 12, 16 out of 20) aren't arbitrary - they're exactly Polymerase's real resonance-tier boundaries (see [Relic Safari](./relic-safari#4-upgrading)), so this table doubles as "how likely is a fusion to land in each tier" at a given true similarity:
 
-**Interpretation**: A 3/5 threshold has 16% false positive rate at J=0.3 (acceptable for trading).
+| True J | P(≥4/20) | P(≥8/20) | P(≥12/20) | P(≥16/20) | P(≥20/20) |
+|--------|----------|----------|-----------|-----------|-----------|
+| 0.1 | 13% | 0% | 0% | 0% | 0% |
+| 0.2 | 59% | 3% | 0% | 0% | 0% |
+| 0.3 | 89% | 23% | 1% | 0% | 0% |
+| 0.4 | 98% | 58% | 6% | 0% | 0% |
+| 0.5 | 100% | 87% | 25% | 1% | 0% |
+| 0.6 | 100% | 98% | 60% | 5% | 0% |
+| 0.7 | 100% | 100% | 89% | 24% | 0% |
+| 0.8 | 100% | 100% | 99% | 63% | 1% |
+| 0.9 | 100% | 100% | 100% | 96% | 12% |
+
+**Interpretation**: at true similarity J=0.5, an artifact pair clears Polymerase's "low" floor (≥4/20) essentially every time, but only reaches "medium" (≥8/20) 87% of the time and "high" (≥12/20) a quarter of the time. That spread is doing real work - it's what makes higher-similarity fusions feel meaningfully more rewarding without a fusion ever being *guaranteed* a top tier just because the two artifacts looked similar to a player eyeballing the trait list.
 
 ### Confidence Intervals
 
-For observed matches $m$ out of $k=5$:
+For observed matches $m$ out of $k=20$:
 
 $$
-\hat{J} = \frac{m}{5} \pm z_{\alpha/2} \sqrt{\frac{\hat{J}(1-\hat{J})}{5}}
+\hat{J} = \frac{m}{20} \pm z_{\alpha/2} \sqrt{\frac{\hat{J}(1-\hat{J})}{20}}
 $$
 
-Example: 3/5 matches → Ĵ = 0.6 ± 0.43 (95% CI)
+Example: 8/20 matches → Ĵ = 0.4 ± 0.22 (95% CI)
 
-The wide interval reflects k=5's limited precision. Threshold-based matching is more robust than point estimates.
+Still a wide interval, just less than half as wide as the old k=5 system's. Threshold-based matching (what Jaccard Swap actually does everywhere) is far more robust to this than reading a point estimate would be.
 
 ## Future Directions
 
@@ -457,7 +461,20 @@ This is future work—current Jaccard Swap uses string-based categorical traits.
 
 ### Compact MinHash
 
-Current implementation uses `bytes32[5]` (160 bytes) for MinHash signatures. But do we need full `bytes32` per band?
+:::note This section predicted its own future
+This section originally speculated about truncating `bytes32[5]` down to
+compact fingerprints. That idea shipped - the current implementation uses
+`bytes8[20]`, which is exactly the "collision resistance is unimportant, we
+only need uniform distribution" argument below, just applied less
+aggressively than the `bytes4`/packed-`bytes20` ideas still described here.
+`bytes8[20]` is a plain fixed-size Solidity array (no manual bit-packing
+required - the compiler tight-packs it into 5 storage slots on its own),
+which is a big part of why it was the pragmatic choice over the more
+aggressive-but-more-complex packing schemes below. Those remain unshipped
+future work.
+:::
+
+An earlier implementation used `bytes32[5]` (160 bytes) for MinHash signatures. Do we need full `bytes32` per band?
 
 **The key insight**: We check **exact matches per band independently**—we never compare across bands. This means:
 
@@ -513,10 +530,13 @@ function computePackedMinHash(string[] memory features) pure returns (bytes20) {
 }
 ```
 
-**Summary**: Fingerprinting `bytes32 → bytes4` per band and concatenating into `bytes20` gives **8× storage reduction** (160 → 20 bytes) without meaningful loss of generality for collections under ~100K items.
+**Summary**: Fingerprinting `bytes32 → bytes4` per band and concatenating into `bytes20` would give a further **8× storage reduction** versus the shipped `bytes8[20]` (160 → 20 bytes) without meaningful loss of generality for collections under ~100K items - but at the cost of manual bit-packing/unpacking instead of a plain array. Not worth it yet at Relic Safari's scale.
 
-:::note Example Implementation
-For Jaccard Swap, we keep it simple with `bytes32[5]`. The fingerprinting optimization is future work for production deployments where storage costs matter.
+:::note Current Implementation
+Jaccard Swap ships `bytes8[20]` - a middle ground between the original
+`bytes32[5]` and the more aggressive `bytes4`/packed-`bytes20` schemes
+above. The manual-packing optimization remains future work for deployments
+where storage costs matter more than they do here.
 :::
 
 ## References

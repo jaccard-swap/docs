@@ -27,7 +27,7 @@ interface Schema {
   requiredKeys: string[]    // ["rarity", "element"]
   optionalKeys: string[]    // ["faction", "season"]
   hashFunction: string      // "keccak256"
-  numHashes: number         // 5
+  numHashes: number         // 20
   seeds: string[]           // MINHASH_SEEDS
 }
 ```
@@ -40,7 +40,7 @@ interface Schema {
   name: "gaming-nft-v1",
   requiredKeys: ["rarity", "element", "class"],
   optionalKeys: ["faction", "season", "generation"],
-  numHashes: 5,
+  numHashes: 20,
 }
 ```
 
@@ -50,7 +50,7 @@ interface Schema {
   name: "art-nft-v1", 
   requiredKeys: ["artist", "medium", "year"],
   optionalKeys: ["style", "collection", "edition"],
-  numHashes: 5,
+  numHashes: 20,
 }
 ```
 
@@ -60,7 +60,7 @@ interface Schema {
   name: "relic-safari-v1",
   requiredKeys: [],  // All optional
   optionalKeys: ["rarity", "quality", "inscription", "age", "material", "form", "site"],
-  numHashes: 5,
+  numHashes: 20,
 }
 ```
 
@@ -168,7 +168,7 @@ const schemaId = await schemaRegistry.registerSchema({
   requiredKeys: ["rarity", "element"],
   optionalKeys: ["faction"],
   seeds: MINHASH_SEEDS,
-  numHashes: 5,
+  numHashes: 20,
 })
 
 // Collection declares compliance
